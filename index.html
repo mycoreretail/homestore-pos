@@ -357,13 +357,14 @@ async function connectShared(){
   else return;
   if(!d){ loadWarning="Shared store not available on this view — saved in this browser."; syncStatus(); return; }
   db=d;
-  const storeDevice=deviceMode!=="admin"&&typeof hsConfig==="function"&&!!hsConfig().firebase&&!(window.claude&&window.claude.use);
+  const selfHosted=typeof hsConfig==="function"&&!!hsConfig().firebase&&!(window.claude&&window.claude.use); const ownerSignedIn=(()=>{ try{ return !!(window.firebase&&firebase.auth().currentUser&&firebase.auth().currentUser.email); }catch(e){ return false; } })();
+  const storeDevice=selfHosted&&(deviceMode!=="admin"||!ownerSignedIn);
   let cfg, tenants, integ; try{ [cfg,tenants,integ]=await Promise.all([readDoc("platform/config"),storeDevice?Promise.resolve([]):readCollection("tenants"),readCollection("integrations").catch(()=>[])]); }
   catch(e){ db=null; loadWarning="Shared store access was not granted — data is saved in this browser only."; syncStatus(); return; }
   if(cfg===undefined){ db=null; loadWarning="Couldn't reach the shared store — working from this browser's copy. Reload to retry."; syncStatus(); return; }
   if(cfg||tenants.length){ platform={config:cfg||platform.config,tenants:tenants.length?tenants:(storeDevice?(platform.tenants||[]):platform.tenants),integrations:integ&&integ.length?integ:(platform.integrations||[])}; if(platform.config&&/^Hearth & Timber|^MyCoreRetail$/i.test(platform.config.softwareName||"")){ platform.config.softwareName="HomeStore POS"; queueWrite("platform","config",clone(platform.config)); } }
   else if(platform.config||platform.tenants.length){ if(platform.config) queueWrite("platform","config",clone(platform.config)); for(const t of platform.tenants) queueWrite("tenants",t.id,clone(t)); for(const i of (platform.integrations||[])) queueWrite("integrations",i.id,clone(i)); }
-  else { await migrateRootData(); }
+  else { if(!selfHosted) await migrateRootData(); }
   savePlatformLocal(); persistMode="shared";
   if(session&&session.kind==="staff"&&isTrainingId(session.tenantId)){ trainingMode=true; const ret=(()=>{ try{ return JSON.parse(localStorage.getItem("ht_training_return")||"null"); }catch(e){ return null; } })(); if(ret) window._trainingReturn=ret; const tr=trainingTenantFor(session.tenantId.replace(/^tr_/,"")); if(!platform.tenants.some(t=>t.id===tr.id)) platform.tenants=platform.tenants.concat([tr]); loadTenantLocal(session.tenantId); }
   else if(session&&session.kind==="staff"){ await loadTenantShared(session.tenantId); }
@@ -547,6 +548,7 @@ function renderLoginInner(){
   if(platform.config&&/^Hearth & Timber|^MyCoreRetail$/i.test(platform.config.softwareName||"")){ platform.config.softwareName="HomeStore POS"; savePlatformLocal(); }
   const brand=platform.config?.softwareName||"HomeStore POS";
   const hostedDb=!!((window.claude&&window.claude.use)||(typeof hsConfig==="function"&&hsConfig().firebase));
+  if(deviceMode==="admin"&&platformLoaded&&typeof adminNeedsAccount==="function"&&adminNeedsAccount()){ root.innerHTML=adminAccountForm(brand); return; }
   if(!platform.config&&hostedDb&&!forceSetup){
     if(!platformLoaded){ root.innerHTML=`<div class="login"><div class="box" style="text-align:center"><div class="brand" style="color:var(--ink);justify-content:center;padding:0 0 8px">${brandMark(brand,true)}<div>${esc(brand)}</div></div><p class="muted">Connecting to your store…</p><p class="muted"><span class="syncpill"></span></p></div></div>`; syncStatus(); return; }
     if(platformFailed){ root.innerHTML=`<div class="login"><div class="box"><h2>Can't reach the store data</h2><p class="muted">${esc(loadWarning||"The shared store didn't answer.")} Check the connection and reload. If this device belongs to a dealer, nothing needs to be set up here.</p><div class="row"><button class="btn p fx" onclick="location.reload()">Reload</button></div>${deviceMode==="admin"?`<div class="foot" style="margin-top:14px"><a href="#" onclick="forceSetup=true;renderLogin();return false">This is a brand-new installation — set up the software owner</a></div>`:""}</div></div>`; return; }
