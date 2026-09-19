@@ -8,6 +8,9 @@ window.HS_CONFIG = {
     messagingSenderId: "506752189635",
     appId: "1:506752189635:web:c3c2235c604ca886bf4e76"
   },
+  // Optional: Google Maps key for address autocomplete as you type (Places API). Restrict the key to your site in Google Cloud.
+  googleMapsKey: "AIzaSyClioVX0HlLRAMWZmBNkK-NYU-TL40Sw24",
+  country: "us",
   // Your relay service, once deployed (vendor APIs, live stock, card terminals). Leave "" until then.
   relayUrl: "",
   // Must match RELAY_TOKEN on the relay server
