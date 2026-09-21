@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HomeStore POS</title>
-<script src="config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -2561,7 +2560,7 @@ function purgedNote(d){ return d&&d.photosPurged?`<span class="muted small" styl
 async function deleteStoredImage(url){ try{ if(!/^https?:\/\//.test(url)) return; const st=await storageRef(); if(!st) return; await st.refFromURL(url).delete(); }catch(e){} }
 async function purgeOldPhotos(force){ const months=photoRetentionMonths(); if(!months||months<=0) return 0; const key="ht_photo_purge:"+tenantId; try{ const last=localStorage.getItem(key); if(!force&&last===todayISO()) return 0; localStorage.setItem(key,todayISO()); }catch(e){} const cutoff=(()=>{ const d=new Date(); d.setMonth(d.getMonth()-months); return d.toISOString().slice(0,10); })(); let n=0, docs=0; for(const d of S.deliveries){ const when=d.deliveredAt||d.pickedUpAt||d.date; if(!when||when>=cutoff) continue; const photos=(d.photos||[]).filter(Boolean); const dmg=(d.itemIssues||[]).flatMap(x=>x.photos||[]).filter(Boolean); if(!photos.length&&!dmg.length) continue; for(const u of photos.concat(dmg)) await deleteStoredImage(u); n+=photos.length+dmg.length; d.photos=[]; (d.itemIssues||[]).forEach(x=>{ x.photos=[]; }); d.photosPurged={at:todayISO(),months,n:photos.length+dmg.length}; docs++; await save("deliveries",d); } if(n){ logAudit("settings",`Retention: removed ${n} delivery photo${n===1?"":"s"} older than ${months} months on ${docs} deliver${docs===1?"y":"ies"}`); } return n; }
 /* ---- update notice: registers check version.txt every 15 minutes and offer to reload ---- */
-const BUILD_VERSION="20260921-0448";
+const BUILD_VERSION="__BUILD__";
 let _updateTimer=null, _updateShown=false;
 async function checkForUpdate(){ if(!(typeof hsConfig==="function"&&hsConfig().firebase)) return; if(BUILD_VERSION.indexOf("__")===0) return; try{ const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return; const v=(await r.text()).trim(); if(!v||v===BUILD_VERSION||_updateShown) return; let tried=null; try{ tried=JSON.parse(localStorage.getItem("ht_update_tried")||"null"); }catch(e){} if(tried&&tried.v===v&&Date.now()-tried.at<20*60000) return; _updateShown=true; showUpdateBanner(v); }catch(e){} }
 function showUpdateBanner(v){ let b=document.getElementById("update-banner"); if(b) return; b=document.createElement("div"); b.id="update-banner"; b.style.cssText="position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2600;background:#222E38;color:#fff;padding:10px 16px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:14px;display:flex;gap:12px;align-items:center"; b.innerHTML=`<span>A new version of HomeStore POS is ready.</span><button class="btn s" style="background:#37A598;color:#fff;border-color:#37A598" onclick="applyUpdate('${v}')">Update now</button><button class="btn s" style="background:transparent;color:#fff;border-color:#fff" onclick="this.parentElement.remove()">Later</button>`; document.body.appendChild(b); }

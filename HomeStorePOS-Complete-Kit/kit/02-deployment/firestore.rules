@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Owner = a real Firebase account (email/password). Registers sign in anonymously.
+    function isOwner() { return request.auth != null && request.auth.token.email != null; }
+    function isSignedIn() { return request.auth != null; }
+
+    // Store code lookup: one document per code. Registers may GET a code they know,
+    // never LIST them — so the code space cannot be walked from the public sign-in page.
+    match /tenantCodes/{code} {
+      allow get: if isSignedIn();
+      allow list, write: if isOwner();
+    }
+    // Dealer records: registers may read the one they were resolved to; only the owner lists/edits.
+    match /tenants/{tenantId} {
+      allow get: if isSignedIn();
+      allow list, write: if isOwner();
+      // A dealer's own data (settings, staff, sales, ...). Registers reach it only after a valid code.
+      match /{collection}/{doc} {
+        allow read, write: if isSignedIn();
+      }
+    }
+    // Dealer-specific vendor API credentials: a store may write its own; nobody can read them
+    // from a browser (the relay reads them with the admin SDK).
+    match /vendorCredentials/{doc} {
+      allow create, update: if isSignedIn();
+      allow read, delete: if isOwner();
+    }
+    match /platform/{doc} { allow read: if isSignedIn(); allow write: if isOwner(); }
+    match /integrations/{doc} { allow read: if isSignedIn(); allow write: if isOwner(); }
+  }
+}

@@ -1,0 +1,14 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Delivery photos, damage photos, signatures, ID photos — one folder per store.
+    // Any signed-in register may upload (max 15 MB, images or PDF) and read.
+    match /tenants/{tenantId}/{kind}/{ownerId}/{file} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 15 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType == 'application/pdf');
+    }
+  }
+}
