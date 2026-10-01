@@ -683,7 +683,7 @@ function renderLoginInner(){
     <div class="msg" id="su_msg"></div><button class="btn p w" id="su_go" onclick="setupPlatform()">Create administrator</button><p class="muted" style="margin-top:12px"><span class="syncpill"></span></p></div></div>`; for(const id in keep){ const e=document.getElementById(id); if(e) e.value=keep[id]; } syncStatus(); return; }
   if(deviceMode==="admin"&&typeof adminNeedsAccount==="function"&&adminNeedsAccount()){ root.innerHTML=adminAccountForm(brand); return; }
   if(deviceMode==="admin"){ const admins=platform.config.admins||[]; if(!loginSel&&admins.length===1) loginSel=admins[0].id; root.innerHTML=`<div class="login admin"><div class="box">${loginLogoHTML(56)}<div style="height:10px"></div><span class="adminbadge">ADMINISTRATION</span><div class="muted small" style="margin:6px 0 10px">Software owner console</div>
-    <div class="staffgrid">${admins.map(a=>`<button class="${loginSel===a.id?"on":""}" onclick="loginSel='${a.id}';loginPin='';renderLogin()"><span class="avatar">${esc(a.name[0])}</span>${esc(a.name)}<span class="muted small">Administrator</span></button>`).join("")}</div>${loginSel?pinPad(admins.find(a=>a.id===loginSel)):`<p class="muted" style="text-align:center">Tap your name</p>`}<p class="muted" style="margin-top:8px;text-align:center"><span class="syncpill"></span></p></div><div class="foot">This device is set up as the administrator's console · <a href="#" onclick="setMode('store');return false">switch to a store register</a></div></div>`; syncStatus(); return; }
+    <div class="staffgrid">${admins.map(a=>`<button class="${loginSel===a.id?"on":""}" onclick="loginSel='${a.id}';loginPin='';renderLogin()"><span class="avatar">${esc(a.name[0])}</span>${esc(a.name)}<span class="muted small">Administrator</span></button>`).join("")}</div>${loginSel?pinPad(admins.find(a=>a.id===loginSel)):`<p class="muted" style="text-align:center">Tap your name</p>`}<p class="muted" style="margin-top:8px;text-align:center"><span class="syncpill"></span></p></div><div class="foot" style="margin-top:14px">This device is set up as the administrator's console.<div style="margin-top:10px"><button class="btn fx" onclick="setMode('store')">Sign in to a store instead</button></div></div></div>`; syncStatus(); return; }
   // store register
   const t=loginTenant; applyPalette(t?currentPalette():PALETTES[0]);
   if(!t&&loginCode&&!loginBusy&&!loginAutoTried){ loginAutoTried=true; setTimeout(()=>openStore(true),0); }
@@ -783,8 +783,11 @@ function hsMorphChildren(from,to,keep){ let a=from.firstChild, b=to.firstChild;
   while(a){ const na=a.nextSibling; from.removeChild(a); a=na; } }
 function hsTypingIn(root){ let ae=null; try{ ae=document.activeElement; }catch(e){} if(!ae||!root||!root.contains||!root.contains(ae)) return null;
   if(ae.tagName==="TEXTAREA") return ae; if(ae.tagName==="INPUT"&&!/^(checkbox|radio|file|button|submit|reset|range|color|date|time|datetime-local|month|week|image|hidden)$/i.test(ae.getAttribute("type")||"text")) return ae; return null; }
+/* the store logo is a picture decoded by the graphics card; redrawing it from scratch on every screen change gives
+   some computers a corrupted (rainbow) logo until a refresh — so the same <img> element is carried over when its picture hasn't changed */
+function keepLogo(root,fn){ let old=null; try{ old=root.querySelector("img.brandlogo"); }catch(e){} fn(); if(!old) return; try{ const nu=root.querySelector("img.brandlogo"); if(nu&&nu!==old&&nu.getAttribute("src")===old.getAttribute("src")&&nu.getAttribute("style")===old.getAttribute("style")) nu.replaceWith(old); }catch(e){} }
 function setRoot(html){ const root=document.getElementById("root"); if(!root) return; const keep=hsTypingIn(root);
-  if(!keep){ root.innerHTML=html; return; }
+  if(!keep){ keepLogo(root,()=>{ root.innerHTML=html; }); return; }
   let tpl=null; try{ tpl=document.createElement("template"); tpl.innerHTML=html; }catch(e){ tpl=null; } if(!tpl||!tpl.content){ root.innerHTML=html; return; }
   try{ hsMorphChildren(root,tpl.content,keep); }catch(e){ root.innerHTML=html; } }
 function keepFocus(){ const ae=document.activeElement; if(!ae||!ae.id||!["INPUT","TEXTAREA","SELECT"].includes(ae.tagName)) return null; let s=null,e=null; try{ s=ae.selectionStart; e=ae.selectionEnd; }catch(x){} return {id:ae.id,s,e}; }
@@ -2754,7 +2757,7 @@ async function purgeOldPhotos(force){ const months=photoRetentionMonths(); if(!m
 /* ---- updates: check version.txt right after opening, every 5 minutes, and every time the app comes back to the
    screen (iPhone home-screen apps resume instead of reloading, and their timers pause in the background).
    If nobody is in the middle of something, the app reloads itself; otherwise it shows the "Update now" banner. ---- */
-const BUILD_VERSION="20260930-1300";
+const BUILD_VERSION="20260930-1400";
 let _updateTimer=null, _updateShown=false;
 function updateSafeNow(){ try{ const mr=document.getElementById("modal-root"); if(mr&&mr.innerHTML.trim()) return false; if(typeof cur!=="undefined"&&cur&&(cur.lines||[]).length) return false; if(typeof aiBusy!=="undefined"&&aiBusy) return false; const ae=document.activeElement; if(ae&&["INPUT","TEXTAREA","SELECT"].includes(ae.tagName)&&ae.value) return false; return true; }catch(e){ return false; } }
 async function checkForUpdate(auto){ if(!(typeof hsConfig==="function"&&hsConfig().firebase)) return; if(BUILD_VERSION.indexOf("__")===0) return; try{ const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return; const v=(await r.text()).trim(); if(!v||v===BUILD_VERSION) return; let tried=null; try{ tried=JSON.parse(localStorage.getItem("ht_update_tried")||"null"); }catch(e){} if(tried&&tried.v===v&&Date.now()-tried.at<10*60000) return; /* just tried: the web host can take a few minutes to hand out the new page */ if(auto===true&&updateSafeNow()) return applyUpdate(v); if(_updateShown) return; _updateShown=true; showUpdateBanner(v); }catch(e){} }
