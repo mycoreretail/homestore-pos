@@ -495,7 +495,7 @@ async function loadTenantShared(tid){
   catch(e){ loadWarning="Couldn't load this store from the shared store — using this browser's copy."; goOffline(); syncStatus(); return false; }
   if(COLLS.some(c=>results[c].length)){ COLLS.forEach(c=>S[c]=results[c]); try{ migrateLegacy(); }catch(e){} saveLocal(); }
   else { for(const c of COLLS) for(const doc of S[c]) queueWrite(`tenants/${tid}/${c}`,doc.id,clone(doc)); }
-  snapAll(); return true;
+  snapAll(); if(typeof startInboxLive==="function") startInboxLive(tid); return true;
 }
 async function save(coll,doc){
   if(coll==="invoices"&&doc&&typeof drawerTagPayments==="function") drawerTagPayments(doc); if(coll==="invoices"&&doc&&typeof crmOnInvoiceSaved==="function") crmOnInvoiceSaved(doc);
@@ -2757,7 +2757,7 @@ async function purgeOldPhotos(force){ const months=photoRetentionMonths(); if(!m
 /* ---- updates: check version.txt right after opening, every 5 minutes, and every time the app comes back to the
    screen (iPhone home-screen apps resume instead of reloading, and their timers pause in the background).
    If nobody is in the middle of something, the app reloads itself; otherwise it shows the "Update now" banner. ---- */
-const BUILD_VERSION="20261008-1000";
+const BUILD_VERSION="20261008-1200";
 let _updateTimer=null, _updateShown=false;
 function updateSafeNow(){ try{ const mr=document.getElementById("modal-root"); if(mr&&mr.innerHTML.trim()) return false; if(typeof cur!=="undefined"&&cur&&(cur.lines||[]).length) return false; if(typeof aiBusy!=="undefined"&&aiBusy) return false; const ae=document.activeElement; if(ae&&["INPUT","TEXTAREA","SELECT"].includes(ae.tagName)&&ae.value) return false; return true; }catch(e){ return false; } }
 async function checkForUpdate(auto){ if(!(typeof hsConfig==="function"&&hsConfig().firebase)) return; if(BUILD_VERSION.indexOf("__")===0) return; try{ const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return; const v=(await r.text()).trim(); if(!v||v===BUILD_VERSION) return; let tried=null; try{ tried=JSON.parse(localStorage.getItem("ht_update_tried")||"null"); }catch(e){} if(tried&&tried.v===v&&Date.now()-tried.at<10*60000) return; /* just tried: the web host can take a few minutes to hand out the new page */ if(auto===true&&updateSafeNow()) return applyUpdate(v); if(_updateShown) return; _updateShown=true; showUpdateBanner(v); }catch(e){} }
@@ -4575,6 +4575,17 @@ function crmNotifications(add){ try{ if(!crmOn()||!has("customers")) return; con
    Messages live at tenants/{t}/messages (written by the relay for inbound/sent, read live by the app).
    ============================================================ */
 let msgThread="", msgQ="", msgFilter="all";
+/* ---------- live inbox ----------
+   The store's data is loaded once at sign-in; texts and website chats arrive while the portal is open, so these two
+   collections are watched live: new or changed docs are merged in, the bell and CRM badge update, and the screen
+   redraws (unless someone is typing). */
+let _inboxLive=null;
+function stopInboxLive(){ try{ if(_inboxLive) for(const un of _inboxLive.subs) try{ un(); }catch(e){} }catch(e){} _inboxLive=null; }
+function startInboxLive(tid){ try{ if(typeof db==="undefined"||!db||!db.collection||!tid) return; if(_inboxLive&&_inboxLive.tid===tid) return; stopInboxLive(); const subs=[];
+  for(const coll of ["messages","webchats"]){ try{ const un=db.collection(`tenants/${tid}/${coll}`).onSnapshot(snap=>{ let changed=false; snap.docChanges().forEach(ch=>{ const d=clone(ch.doc.data())||{}; if(!d.id) d.id=ch.doc.id; S[coll]=S[coll]||[]; const i=S[coll].findIndex(x=>x.id===d.id);
+      if(ch.type==="removed"){ if(i>=0){ S[coll].splice(i,1); changed=true; } return; } const cur=i>=0?S[coll][i]:null; let same=false; try{ same=cur&&JSON.stringify(cur)===JSON.stringify(d); }catch(e){} if(same) return; if(i>=0) S[coll][i]=d; else S[coll].push(d); changed=true; });
+      if(!changed) return; try{ saveLocal(); }catch(e){} try{ if(typeof notifRefreshBadge==="function") notifRefreshBadge(); }catch(e){} try{ const root=document.getElementById("root"); const typing=typeof hsTypingIn==="function"&&hsTypingIn(root); if(!typing&&typeof render==="function"&&session) render(); }catch(e){} },err=>{ console.warn("live inbox",coll,err&&err.message); }); subs.push(un); }catch(e){} }
+  _inboxLive={tid,subs}; }catch(e){} }
 function smsCfg(){ const s=storeSettings().sms||{}; return {mode:s.mode||"phone",provider:s.provider||"",from:s.from||"",requireConsent:s.requireConsent!==false,sig:s.sig||""}; }
 function smsApiOn(){ try{ return crmOn()&&(typeof modOn!=="function"||modOn("sms"))&&smsCfg().mode==="api"&&!!smsCfg().from; }catch(e){ return false; } }
 function phoneKey(v){ const d=String(v||"").replace(/\D/g,""); if(d.length===10) return "+1"+d; if(d.length===11&&d[0]==="1") return "+"+d; return d?"+"+d:""; }
