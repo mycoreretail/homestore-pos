@@ -2757,7 +2757,7 @@ async function purgeOldPhotos(force){ const months=photoRetentionMonths(); if(!m
 /* ---- updates: check version.txt right after opening, every 5 minutes, and every time the app comes back to the
    screen (iPhone home-screen apps resume instead of reloading, and their timers pause in the background).
    If nobody is in the middle of something, the app reloads itself; otherwise it shows the "Update now" banner. ---- */
-const BUILD_VERSION="20261008-1400";
+const BUILD_VERSION="20261008-1600";
 let _updateTimer=null, _updateShown=false;
 function updateSafeNow(){ try{ const mr=document.getElementById("modal-root"); if(mr&&mr.innerHTML.trim()) return false; if(typeof cur!=="undefined"&&cur&&(cur.lines||[]).length) return false; if(typeof aiBusy!=="undefined"&&aiBusy) return false; const ae=document.activeElement; if(ae&&["INPUT","TEXTAREA","SELECT"].includes(ae.tagName)&&ae.value) return false; return true; }catch(e){ return false; } }
 async function checkForUpdate(auto){ if(!(typeof hsConfig==="function"&&hsConfig().firebase)) return; if(BUILD_VERSION.indexOf("__")===0) return; try{ const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return; const v=(await r.text()).trim(); if(!v||v===BUILD_VERSION) return; let tried=null; try{ tried=JSON.parse(localStorage.getItem("ht_update_tried")||"null"); }catch(e){} if(tried&&tried.v===v&&Date.now()-tried.at<10*60000) return; /* just tried: the web host can take a few minutes to hand out the new page */ if(auto===true&&updateSafeNow()) return applyUpdate(v); if(_updateShown) return; _updateShown=true; showUpdateBanner(v); }catch(e){} }
@@ -4719,6 +4719,35 @@ function webchatSettingsHTML(){ const st=storeSettings(); const cfg=webchatCfg(s
   <p class="muted small" style="margin:10px 0 4px">Or share the chat as a link — good for the Facebook page button, the Instagram bio, Google Business Profile and QR codes:</p><input type="text" readonly value="${esc(link)}" onclick="this.select()" style="font-family:monospace;font-size:12px"></div>`; }
 function wcAddFaq(){ const box=document.getElementById("wc_faq"); if(!box) return; const d=document.createElement("div"); d.className="grid g2"; d.style.cssText="grid-template-columns:1fr 2fr auto;gap:6px;margin-bottom:6px;align-items:start"; d.innerHTML='<input type="text" class="wcq" placeholder="Question"><textarea class="wca" rows="2" placeholder="Answer"></textarea><button class="btn s" onclick="this.parentNode.remove()" title="Remove">✕</button>'; box.appendChild(d); }
 async function saveWebchatSettings(){ const st=storeSettings(); const Q=[...document.querySelectorAll(".wcq")].map(e=>e.value.trim()); const A=[...document.querySelectorAll(".wca")].map(e=>e.value.trim()); st.webchat=Object.assign({},st.webchat||{},{on:fchk("wc_on"),greeting:fv("wc_greet").trim(),reply:fv("wc_reply").trim(),faq:Q.map((q,i)=>({q,a:A[i]||""})).filter(x=>x.q&&x.a)}); await save("settings",st); toast("Saved"); render(); }
+
+/* ============================================================
+   DEVICE BRIDGE — rugged Android scanners / tablets running the HomeStore app (homestore-android)
+   • The Android app injects window.HSDevice (saveFile, info) and calls window.hsScan(code) when the hardware
+     scanner reads a barcode (Zebra DataWedge, Honeywell, Unitech, Chainway, iData, Urovo… or any keyboard-wedge
+     scanner, which simply types into the focused box).
+   • hsScan routes a scan to whatever the person is doing: the open camera-scan window, the focused text box,
+     New sale (adds the item), Warehouse (picks it), Inventory / Catalog (searches it).
+   • saveFile: real downloads in a browser (CSV, HTML), the device's Downloads folder in the Android app,
+     and the old copy-this-text window only as a last resort.
+   ============================================================ */
+function hsNative(){ try{ return !!(window.HSDevice&&typeof HSDevice.saveFile==="function"); }catch(e){ return false; } }
+function hsScan(code){ code=String(code||"").replace(/[\r\n\t]+$/,"").trim(); if(!code) return;
+  try{ if(window._scanCb&&document.getElementById("scanvid")){ scanDone(code); return; } }catch(e){}
+  const ae=document.activeElement; if(ae&&(ae.tagName==="INPUT"||ae.tagName==="TEXTAREA")&&!ae.readOnly&&!/^(checkbox|radio|file|date|number)$/i.test(ae.type||"")){ ae.value=code; try{ ae.dispatchEvent(new Event("input",{bubbles:true})); ae.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",code:"Enter",bubbles:true})); }catch(e){} return; }
+  const v=typeof view!=="undefined"?view:""; const lc=code.toLowerCase(); const prod=(S.products||[]).find(p=>[p.sku,p.barcode,p.vendorSku,p.upc].some(x=>x&&String(x).toLowerCase()===lc));
+  try{
+    if(v==="pos"&&typeof addLine==="function"){ if(prod){ addLine(prod.id); toast("Added "+prod.name); } else toast("No item with code "+code,true); return; }
+    if(v==="warehouse"&&typeof whScanCode==="function"){ whScanCode(code); return; }
+    if(v==="stock"){ invQ=code; render(); return; }
+    if(v==="catalog"){ catQ=code; render(); return; }
+    if(prod&&typeof openProduct==="function"){ openProduct(prod.id); return; }
+  }catch(e){}
+  toast("Scanned "+code+(prod?" — "+prod.name:"")); }
+async function saveFile(name,data){ data=String(data??""); name=String(name||"file.txt");
+  if(hsNative()){ try{ HSDevice.saveFile(name,data); toast("Saved "+name+" to Downloads"); return; }catch(e){} }
+  if(typeof downloadsCap!=="undefined"&&downloadsCap){ try{ await downloadsCap.save({filename:name,data}); return toast("Saved "+name); }catch(e){ if(e&&e.code==="declined") return; } }
+  try{ if(window.Blob&&window.URL&&URL.createObjectURL){ const type=/\.csv$/i.test(name)?"text/csv;charset=utf-8":/\.html?$/i.test(name)?"text/html;charset=utf-8":/\.json$/i.test(name)?"application/json":"text/plain;charset=utf-8"; const url=URL.createObjectURL(new Blob([data],{type})); const a=document.createElement("a"); a.href=url; a.download=name; a.style.display="none"; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(url); a.remove(); }catch(e){} },3000); toast("Downloading "+name); return; } }catch(e){}
+  modal(`<h2>${esc(name)}</h2><p class="muted">Copy this text and save it as ${esc(name)}.</p><textarea rows="14" style="width:100%">${esc(data)}</textarea><div class="actions"><button class="btn p" onclick="closeModal()">Done</button></div>`); }
 /* ============================================================
    DELIVERIES & ROUTING
    ============================================================ */
