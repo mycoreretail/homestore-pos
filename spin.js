@@ -10,6 +10,7 @@
   var base = (s.getAttribute("data-base") || s.src.replace(/\/spin\.js.*$/, "")).replace(/\/$/, "");
   var origin; try { origin = new URL(base, location.href).origin; } catch (e) { return; }
   var K = "hs_spin:" + tid + ":";
+  var testMode = /[?&#]spintest/i.test(location.search + location.hash);
   function get(k) { try { var v = localStorage.getItem(K + k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
   function put(k, v) { try { if (v === null) localStorage.removeItem(K + k); else localStorage.setItem(K + k, JSON.stringify(v)); } catch (e) {} }
 
@@ -52,7 +53,7 @@
     frame.style.visibility = "visible"; frame.style.pointerEvents = "auto"; frame.style.opacity = "1";
     prevOverflow = document.documentElement.style.overflow; document.documentElement.style.overflow = "hidden";
     if (tab) tab.style.display = "none";
-    try { frame.contentWindow.postMessage({ hs: "spin", type: "open" }, origin); frame.focus(); } catch (e) {}
+    try { frame.contentWindow.postMessage({ hs: "spin", type: "open", fresh: testMode }, origin); frame.focus(); } catch (e) {}
   }
 
   function closed() {
@@ -67,6 +68,7 @@
   function start() {
     if (!cfg || !cfg.enabled) { if (frame) { frame.remove(); frame = null; } return; }
     if (wantOpen) { wantOpen = false; open(); return; }
+    if (testMode) { showTab(); setTimeout(open, 1000); return; }
     if (played()) { showTab("View your prize"); return; }
     if (cfg.mode === "button") { showTab(); return; }
     var d = get("dismissed:" + cfg.id), closedThisVisit = false;
