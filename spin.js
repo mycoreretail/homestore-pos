@@ -31,7 +31,7 @@
   function played() { return cfg ? get("played:" + cfg.id) : null; }
 
   function showTab(label) {
-    if (!cfg || cfg.showTab === false) return;
+    if (!cfg || (cfg.showTab === false && cfg.mode !== "button" && !label)) return;
     if (!tab) {
       tab = document.createElement("button"); tab.type = "button"; tab.id = "hs-spin-tab";
       var css = document.createElement("style");
@@ -60,7 +60,7 @@
     frame.style.opacity = "0"; frame.style.pointerEvents = "none";
     setTimeout(function () { if (!isOpen) frame.style.visibility = "hidden"; }, 220);
     document.documentElement.style.overflow = prevOverflow || "";
-    if (cfg && !played()) put("dismissed:" + cfg.id, Date.now());
+    if (cfg && !played()) { put("dismissed:" + cfg.id, Date.now()); try { sessionStorage.setItem(K + "closed:" + cfg.id, "1"); } catch (e) {} }
     showTab(played() ? "View your prize" : null);
   }
 
@@ -68,8 +68,10 @@
     if (!cfg || !cfg.enabled) { if (frame) { frame.remove(); frame = null; } return; }
     if (wantOpen) { wantOpen = false; open(); return; }
     if (played()) { showTab("View your prize"); return; }
-    var d = get("dismissed:" + cfg.id);
-    if (d && Date.now() - d < (Number(cfg.repeatDays) || 0) * 864e5) { showTab(); return; }
+    if (cfg.mode === "button") { showTab(); return; }
+    var d = get("dismissed:" + cfg.id), closedThisVisit = false;
+    try { closedThisVisit = sessionStorage.getItem(K + "closed:" + cfg.id) === "1"; } catch (e) {}
+    if (closedThisVisit || (d && Date.now() - d < (Number(cfg.repeatDays) || 0) * 864e5)) { showTab(); return; }
     showTab();
     var fired = false, go = function () { if (fired || isOpen) return; fired = true; open(); };
     setTimeout(go, Math.max(0, Number(cfg.delaySeconds) || 0) * 1000);
